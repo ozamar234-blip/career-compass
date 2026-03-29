@@ -1,0 +1,23 @@
+{
+  "name": "מצפן הקריירה — Career Compass",
+  "short_name": "מצפן הקריירה",
+  "description": "גלה את המקצוע שמתאים לך באמת",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAFBFC",
+  "theme_color": "#1B4965",
+  "dir": "rtl",
+  "lang": "he",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
