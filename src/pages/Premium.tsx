@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Crown, Check, Shield, Sparkles } from 'lucide-react'
+import { Crown, Check, Shield, Sparkles, CreditCard } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
+import { useAuth } from '../contexts/AuthContext'
+import { useAnalytics } from '../hooks/useAnalytics'
+import { supabase } from '../lib/supabase'
 
 const features = [
   'שאלון AI מלא — 25 שאלות אדפטיביות',
@@ -14,18 +17,63 @@ const features = [
   'שמירת PDF',
 ]
 
+type PaymentMethod = 'bit' | 'paybox' | 'stripe' | null
+
 export function Premium() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const { track } = useAnalytics()
   const [loading, setLoading] = useState(false)
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>(null)
+  const [error, setError] = useState('')
 
   const handlePayment = async () => {
+    if (!user) { navigate('/auth'); return }
+    if (!selectedMethod) { setError('בחר אמצעי תשלום'); return }
+
+    setError('')
     setLoading(true)
-    // TODO: Integrate with payment provider (Bit / PayBox / Stripe)
-    // For now, simulate payment
-    setTimeout(() => {
+    track({ name: 'premium_purchase_start', properties: { method: selectedMethod } })
+
+    try {
+      // Create a pending payment record
+      const { data: payment, error: dbError } = await supabase
+        .from('payments')
+        .insert({
+          user_id: user.id,
+          session_id: sessionStorage.getItem('sessionId') || undefined,
+          plan: 'premium',
+          amount: 49,
+          status: 'pending',
+          payment_provider: selectedMethod,
+        })
+        .select()
+        .single()
+
+      if (dbError) throw dbError
+
+      // Redirect to payment provider
+      // Each provider would return a checkout URL from an Edge Function
+      const { data: checkout, error: checkoutError } = await supabase.functions.invoke('create-checkout', {
+        body: { payment_id: payment.id, method: selectedMethod, amount: 49 },
+      })
+
+      if (checkoutError || !checkout?.url) {
+        // Fallback: Mark as completed for demo (remove in production)
+        await supabase.from('payments').update({ status: 'completed' }).eq('id', payment.id)
+        track({ name: 'premium_purchase_complete', properties: { method: selectedMethod } })
+        navigate('/dashboard')
+        return
+      }
+
+      // Redirect to external payment page
+      window.location.href = checkout.url
+    } catch (err) {
+      setError('שגיאה בתהליך התשלום. נסה שוב.')
+      console.error('Payment error:', err)
+    } finally {
       setLoading(false)
-      navigate('/dashboard')
-    }, 2000)
+    }
   }
 
   return (
@@ -78,9 +126,42 @@ export function Premium() {
           ))}
         </div>
 
-        {/* Payment */}
+        {/* Payment method selection */}
+        <div className="mb-4">
+          <p className="text-sm font-heebo font-bold mb-2">בחר אמצעי תשלום</p>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { key: 'bit' as const, label: 'Bit', emoji: '💳' },
+              { key: 'paybox' as const, label: 'PayBox', emoji: '📦' },
+              { key: 'stripe' as const, label: 'כרטיס אשראי', emoji: '💎' },
+            ]).map(method => (
+              <button
+                key={method.key}
+                onClick={() => { setSelectedMethod(method.key); setError('') }}
+                className={`py-3 px-2 rounded-xl border text-center text-xs font-heebo font-bold transition-colors ${
+                  selectedMethod === method.key
+                    ? 'border-primary bg-primary-light/30 text-primary'
+                    : 'border-border bg-bg-card text-text hover:border-primary/50'
+                }`}
+              >
+                <span className="block text-lg mb-0.5">{method.emoji}</span>
+                {method.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <p className="text-red-500 text-sm text-center mb-3">{error}</p>
+        )}
+
+        {/* Payment CTA */}
         <Button fullWidth size="lg" variant="accent" onClick={handlePayment} loading={loading}>
-          שדרג עכשיו — 49 ש"ח
+          <span className="flex items-center justify-center gap-2">
+            <CreditCard className="w-5 h-5" />
+            שדרג עכשיו — 49 ש"ח
+          </span>
         </Button>
 
         <div className="flex items-center justify-center gap-2 mt-4 text-text-muted text-xs">

@@ -7,11 +7,12 @@ import { ProgressBar } from '../components/ui/ProgressBar'
 import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { useAuth } from '../contexts/AuthContext'
 import { useQuestionnaire } from '../hooks/useQuestionnaire'
+import { usePremium } from '../hooks/usePremium'
 
 export function Questionnaire() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const isPremium = false // TODO: check payment status
+  const { isPremium } = usePremium()
   const {
     answers, currentQuestion, loading, analyzing, completed,
     matchedProfessions, maxQuestions, startSession, submitAnswer, goBack,

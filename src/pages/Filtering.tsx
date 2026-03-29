@@ -6,6 +6,7 @@ import { ProfessionCard } from '../components/ProfessionCard'
 import { Confetti } from '../components/ui/Confetti'
 import { professions, type Profession, getProfessionsByIds } from '../data/professions'
 import { useAuth } from '../contexts/AuthContext'
+import { usePremium } from '../hooks/usePremium'
 import { supabase } from '../lib/supabase'
 
 type Action = 'selected' | 'rejected' | 'maybe' | 'unknown'
@@ -36,6 +37,7 @@ export function Filtering() {
   const [unknown, setUnknown] = useState<number[]>([])
   const [showConfetti, setShowConfetti] = useState(false)
   const [sessionId] = useState(() => sessionStorage.getItem('sessionId') || '')
+  const { isPremium } = usePremium()
 
   // Load matched professions from questionnaire
   useEffect(() => {
@@ -90,42 +92,45 @@ export function Filtering() {
       })
     }
 
-    // Determine next round
+    // Determine next round — ensure minimum professions
     const nextProfessions = [...selected, ...maybe]
 
-    if (round === 0) {
-      // Round 1 → 2: selected + maybe go to round 2
-      if (nextProfessions.length < 5) {
-        // Add back some unknown
-        const extra = unknown.slice(0, 5 - nextProfessions.length)
-        nextProfessions.push(...extra)
-      }
+    // Fill from unknown/rejected if too few
+    const fillFrom = [...unknown, ...rejected]
+    while (nextProfessions.length < 3 && fillFrom.length > 0) {
+      nextProfessions.push(fillFrom.shift()!)
+    }
 
-      // Check if premium — if not, show paywall
-      // For now, continue to round 2
-      setRound(1)
+    const advanceRound = (nextRound: number) => {
+      setRound(nextRound)
       setRoundProfessions(getProfessionsByIds(nextProfessions))
       setCurrentIdx(0)
       setSelected([])
       setRejected([])
       setMaybe([])
       setUnknown([])
+    }
+
+    if (round === 0) {
+      // Round 1 done — check premium for round 2+
+      if (!isPremium) {
+        // Free users: save top 5 and go to results
+        const freeResults = selected.length > 0 ? selected.slice(0, 5) : nextProfessions.slice(0, 5)
+        sessionStorage.setItem('finalProfessions', JSON.stringify(freeResults))
+        navigate('/premium')
+        return
+      }
+      advanceRound(1)
     } else if (round === 1) {
-      // Round 2 → 3
-      setRound(2)
-      setRoundProfessions(getProfessionsByIds(nextProfessions))
-      setCurrentIdx(0)
-      setSelected([])
-      setRejected([])
-      setMaybe([])
-      setUnknown([])
+      advanceRound(2)
     } else {
-      // Round 3 complete — go to mirror or results
-      const finalProfessions = selected.slice(0, 3)
+      // Round 3 complete
+      const finalProfessions = selected.length >= 3
+        ? selected.slice(0, 3)
+        : [...selected, ...maybe].slice(0, 3)
+
       sessionStorage.setItem('finalProfessions', JSON.stringify(finalProfessions))
       sessionStorage.setItem('round2Professions', JSON.stringify(roundProfessions.map(p => p.id)))
-
-      // Navigate to mirror for premium, results for free
       navigate('/mirror')
     }
   }
