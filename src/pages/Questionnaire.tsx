@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowRight, Send } from 'lucide-react'
@@ -19,14 +19,17 @@ export function Questionnaire() {
   } = useQuestionnaire(isPremium)
   const [inputValue, setInputValue] = useState('')
   const [resuming, setResuming] = useState(true)
+  const sessionStartedRef = useRef(false)
 
   useEffect(() => {
-    if (user) {
+    if (user && !sessionStartedRef.current) {
+      sessionStartedRef.current = true
       setCurrentStep('questionnaire')
       setResuming(true)
       startSession(user.id).then(() => setResuming(false))
     }
-  }, [user, startSession])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user])
 
   useEffect(() => {
     if (completed && matchedProfessions.length > 0) {
@@ -82,7 +85,19 @@ export function Questionnaire() {
       {/* Question */}
       <div className="flex-1 flex flex-col justify-center py-8">
         <AnimatePresence mode="wait">
-          {currentQuestion && (
+          {loading && !analyzing ? (
+            <motion.div
+              key="loading-spinner"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.25 }}
+              className="flex flex-col items-center justify-center gap-4 py-12"
+            >
+              <div className="w-12 h-12 border-4 border-primary-light border-t-primary rounded-full animate-spin" />
+              <p className="text-text-muted font-assistant text-sm">טוען את השאלה הבאה...</p>
+            </motion.div>
+          ) : currentQuestion ? (
             <motion.div
               key={currentQuestion.question_id}
               initial={{ opacity: 0, x: 40 }}
@@ -137,7 +152,7 @@ export function Questionnaire() {
                 </div>
               )}
             </motion.div>
-          )}
+          ) : null}
         </AnimatePresence>
       </div>
 
