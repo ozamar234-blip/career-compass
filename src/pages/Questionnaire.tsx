@@ -58,7 +58,7 @@ export function Questionnaire() {
     )
   }
 
-  if (resuming || (!currentQuestion && loading)) {
+  if (resuming) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
         <LoadingSpinner text={answers.length > 0 ? `ממשיך מאיפה שעצרת (שאלה ${answers.length + 1})...` : 'מכין את השאלון...'} />
