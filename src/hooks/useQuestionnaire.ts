@@ -57,7 +57,7 @@ export function useQuestionnaire(isPremium: boolean) {
     const storedAnswers = lsGet<QuestionAnswer[]>(LS_ANSWERS, [])
     const storedMatched = lsGet<number[]>(LS_MATCHED, [])
 
-    // If we have matched professions already, the questionnaire is done
+    // If we have matched professions in localStorage, the questionnaire is done
     if (storedSessionId && storedMatched.length > 0) {
       setSessionId(storedSessionId)
       setAnswers(storedAnswers)
@@ -66,11 +66,25 @@ export function useQuestionnaire(isPremium: boolean) {
       return true
     }
 
-    // Try loading from DB — find last in-progress session
+    // If we have a session ID + answers in localStorage, resume from there
+    if (storedSessionId && storedAnswers.length > 0) {
+      setSessionId(storedSessionId)
+      setAnswers(storedAnswers)
+      if (storedAnswers.length >= maxQuestions) {
+        await analyzeResults(storedAnswers, storedSessionId)
+        return true
+      }
+      await fetchNextQuestion(storedAnswers)
+      return true
+    }
+
+    // No localStorage data — check DB only for in-progress sessions
+    // (Don't restore completed sessions — user may have clicked "start over")
     const { data } = await supabase
       .from('questionnaire_sessions')
       .select('*')
       .eq('user_id', userId)
+      .eq('status', 'in_progress')
       .order('created_at', { ascending: false })
       .limit(1)
       .single()
@@ -78,22 +92,8 @@ export function useQuestionnaire(isPremium: boolean) {
     if (!data) return false
 
     const dbAnswers = (data.answers || []) as QuestionAnswer[]
-    const dbMatched = (data.matched_professions || []) as number[]
 
-    if (data.status === 'completed' && dbMatched.length > 0) {
-      // Session completed — restore results
-      setSessionId(data.id)
-      setAnswers(dbAnswers)
-      setMatchedProfessions(dbMatched)
-      setCompleted(true)
-      persist(LS_SESSION_ID, data.id)
-      persist(LS_ANSWERS, dbAnswers)
-      persist(LS_MATCHED, dbMatched)
-      localStorage.setItem(LS_SESSION_ID, data.id)
-      return true
-    }
-
-    if (data.status === 'in_progress' && dbAnswers.length > 0) {
+    if (dbAnswers.length > 0) {
       // Session in progress — resume
       setSessionId(data.id)
       setAnswers(dbAnswers)
@@ -101,13 +101,11 @@ export function useQuestionnaire(isPremium: boolean) {
       persist(LS_ANSWERS, dbAnswers)
       localStorage.setItem(LS_SESSION_ID, data.id)
 
-      // Check if we have enough answers to analyze
       if (dbAnswers.length >= maxQuestions) {
         await analyzeResults(dbAnswers, data.id)
         return true
       }
 
-      // Fetch next question from where we left off
       await fetchNextQuestion(dbAnswers)
       return true
     }
