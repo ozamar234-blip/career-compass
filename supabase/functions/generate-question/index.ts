@@ -15,6 +15,21 @@ serve(async (req) => {
 
   try {
     const { session_id, previous_answers } = await req.json()
+    const allAnswers = previous_answers || []
+    const totalAnswered = allAnswers.length
+
+    // Build a compact summary: categories covered + last 3 full answers
+    const categoriesCovered = [...new Set(allAnswers.map((a: { category?: string }) => a.category).filter(Boolean))]
+    const recentAnswers = allAnswers.slice(-3)
+
+    // For early questions (≤3), send all. For later ones, send summary + recent 3
+    const compactContext = totalAnswered <= 3
+      ? JSON.stringify(allAnswers)
+      : JSON.stringify({
+          total_answered: totalAnswered,
+          categories_covered: categoriesCovered,
+          recent_answers: recentAnswers,
+        })
 
     const systemPrompt = `אתה מומחה ייעוץ קריירה ישראלי. אתה מנהל שאלון חווייתי לגילוי מקצוע מתאים.
 
@@ -22,9 +37,9 @@ serve(async (req) => {
 - שאל שאלות בעברית, בשפה חמה ולא פורמלית (פנייה בגוף שני)
 - השאלות חייבות להיות חווייתיות ומעניינות — לא אקדמיות
 - כל שאלה שייכת לאחת מ-6 הקטגוריות: תחומי_עניין, ערכים, סגנון_עבודה, כישורים, אנרגיה, אישיות
-- התאם את השאלה הבאה לתשובות הקודמות (אדפטיבי)
-- וודא שאתה מכסה את כל 6 הקטגוריות לאורך השאלון
-- אחרי 20-25 שאלות, אמור "ANALYSIS_READY"
+- התאם את השאלה הבאה לתשובות האחרונות (אדפטיבי)
+- וודא שאתה מכסה קטגוריות שעוד לא כוסו
+- החזר JSON בלבד
 
 ## פורמט תשובה (JSON בלבד):
 {
@@ -44,12 +59,12 @@ serve(async (req) => {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
+        model: "claude-haiku-4-20250514",
+        max_tokens: 500,
         system: systemPrompt,
         messages: [{
           role: "user",
-          content: `תשובות קודמות (${previous_answers?.length || 0}): ${JSON.stringify(previous_answers || [])}\n\nצור את השאלה הבאה (שאלה מספר ${(previous_answers?.length || 0) + 1}).`,
+          content: `הקשר: ${compactContext}\n\nצור שאלה ${totalAnswered + 1}.`,
         }],
       }),
     })
