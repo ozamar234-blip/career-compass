@@ -18,14 +18,21 @@ export function Questionnaire() {
     matchedProfessions, maxQuestions, startSession, submitAnswer, goBack,
   } = useQuestionnaire(isPremium)
   const [inputValue, setInputValue] = useState('')
-  const [resuming, setResuming] = useState(true)
+  // Only show full-page spinner on first ever load (no answers yet).
+  // If we already have answers in localStorage (e.g. component remount), skip it.
+  const [resuming, setResuming] = useState(() => {
+    try {
+      const stored = localStorage.getItem('cc_answers')
+      return !stored || JSON.parse(stored).length === 0
+    } catch { return true }
+  })
   const sessionStartedRef = useRef(false)
+  const didResumeRef = useRef(answers.length > 0)
 
   useEffect(() => {
     if (user && !sessionStartedRef.current) {
       sessionStartedRef.current = true
       setCurrentStep('questionnaire')
-      setResuming(true)
       startSession(user.id).then(() => setResuming(false))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -71,8 +78,8 @@ export function Questionnaire() {
       {/* Progress */}
       <ProgressBar current={answers.length} total={maxQuestions} label="התקדמות השאלון" />
 
-      {/* Resume indicator */}
-      {answers.length > 0 && answers.length < maxQuestions && (
+      {/* Resume indicator — only show when actually resuming a previous session */}
+      {didResumeRef.current && answers.length > 0 && answers.length < maxQuestions && (
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
