@@ -8,6 +8,7 @@ import { professions, type Profession, getProfessionsByIds } from '../data/profe
 import { useAuth } from '../contexts/AuthContext'
 import { usePremium } from '../hooks/usePremium'
 import { supabase } from '../lib/supabase'
+import { setCurrentStep } from '../hooks/useQuestionnaire'
 
 type Action = 'selected' | 'rejected' | 'maybe' | 'unknown'
 type CardVariant = 'small' | 'medium' | 'full'
@@ -36,12 +37,13 @@ export function Filtering() {
   const [maybe, setMaybe] = useState<number[]>([])
   const [unknown, setUnknown] = useState<number[]>([])
   const [showConfetti, setShowConfetti] = useState(false)
-  const [sessionId] = useState(() => sessionStorage.getItem('sessionId') || '')
+  const [sessionId] = useState(() => localStorage.getItem('cc_sessionId') || sessionStorage.getItem('sessionId') || '')
   const { isPremium } = usePremium()
 
-  // Load matched professions from questionnaire
+  // Load matched professions from questionnaire (try localStorage first, then sessionStorage)
   useEffect(() => {
-    const stored = sessionStorage.getItem('matchedProfessions')
+    setCurrentStep('filtering')
+    const stored = localStorage.getItem('cc_matchedProfessions') || sessionStorage.getItem('matchedProfessions')
     if (stored) {
       const ids = JSON.parse(stored) as number[]
       setRoundProfessions(getProfessionsByIds(ids))
@@ -116,6 +118,7 @@ export function Filtering() {
       if (!isPremium) {
         // Free users: save top 5 and go to results
         const freeResults = selected.length > 0 ? selected.slice(0, 5) : nextProfessions.slice(0, 5)
+        localStorage.setItem('cc_finalProfessions', JSON.stringify(freeResults))
         sessionStorage.setItem('finalProfessions', JSON.stringify(freeResults))
         navigate('/premium')
         return
@@ -129,8 +132,11 @@ export function Filtering() {
         ? selected.slice(0, 3)
         : [...selected, ...maybe].slice(0, 3)
 
+      localStorage.setItem('cc_finalProfessions', JSON.stringify(finalProfessions))
+      localStorage.setItem('cc_round2Professions', JSON.stringify(roundProfessions.map(p => p.id)))
       sessionStorage.setItem('finalProfessions', JSON.stringify(finalProfessions))
       sessionStorage.setItem('round2Professions', JSON.stringify(roundProfessions.map(p => p.id)))
+      setCurrentStep('mirror')
       navigate('/mirror')
     }
   }

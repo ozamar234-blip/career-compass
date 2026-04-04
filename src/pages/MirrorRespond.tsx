@@ -56,7 +56,7 @@ export function MirrorRespond() {
       setUserName('החבר/ה שלך')
       setInvitation({ id: 'demo', session_id: 'demo' })
       // Load professions from sessionStorage or use random
-      const stored = sessionStorage.getItem('round2Professions')
+      const stored = localStorage.getItem('cc_round2Professions') || sessionStorage.getItem('round2Professions')
       if (stored) {
         setProfessions(getProfessionsByIds(JSON.parse(stored)))
       } else {

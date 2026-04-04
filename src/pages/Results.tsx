@@ -40,7 +40,7 @@ export function Results() {
     setLoading(true)
 
     try {
-      const sessionId = sessionStorage.getItem('sessionId')
+      const sessionId = localStorage.getItem('cc_sessionId') || sessionStorage.getItem('sessionId')
       if (sessionId) {
         const { data, error } = await supabase.functions.invoke('generate-synthesis', {
           body: { session_id: sessionId },
@@ -69,7 +69,7 @@ export function Results() {
     }
 
     // Fallback demo data
-    const storedFinal = sessionStorage.getItem('finalProfessions')
+    const storedFinal = localStorage.getItem('cc_finalProfessions') || sessionStorage.getItem('finalProfessions')
     const profIds = storedFinal ? JSON.parse(storedFinal) : [60, 81, 68]
     const profs = getProfessionsByIds(profIds)
 

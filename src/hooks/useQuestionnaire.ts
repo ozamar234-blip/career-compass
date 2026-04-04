@@ -5,18 +5,122 @@ import type { AIQuestion, QuestionAnswer } from '../types/database'
 const MAX_QUESTIONS_FREE = 15
 const MAX_QUESTIONS_PREMIUM = 25
 
+// Persist keys in localStorage so data survives logout/tab close
+const LS_SESSION_ID = 'cc_sessionId'
+const LS_ANSWERS = 'cc_answers'
+const LS_MATCHED = 'cc_matchedProfessions'
+const LS_FINAL = 'cc_finalProfessions'
+const LS_ROUND2 = 'cc_round2Professions'
+const LS_STEP = 'cc_currentStep' // 'questionnaire' | 'filtering' | 'mirror' | 'results'
+
+export type FlowStep = 'questionnaire' | 'filtering' | 'mirror' | 'results' | null
+
+/** Read a JSON value from localStorage safely */
+function lsGet<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+/** Persist helpers — write to both localStorage and sessionStorage for backwards compat */
+function persist(key: string, value: unknown) {
+  const json = JSON.stringify(value)
+  localStorage.setItem(key, json)
+  // Also write to sessionStorage for any legacy readers
+  sessionStorage.setItem(key.replace('cc_', ''), json)
+}
+
 export function useQuestionnaire(isPremium: boolean) {
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [answers, setAnswers] = useState<QuestionAnswer[]>([])
+  const [sessionId, setSessionId] = useState<string | null>(
+    () => localStorage.getItem(LS_SESSION_ID) || null
+  )
+  const [answers, setAnswers] = useState<QuestionAnswer[]>(
+    () => lsGet<QuestionAnswer[]>(LS_ANSWERS, [])
+  )
   const [currentQuestion, setCurrentQuestion] = useState<AIQuestion | null>(null)
   const [loading, setLoading] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [completed, setCompleted] = useState(false)
-  const [matchedProfessions, setMatchedProfessions] = useState<number[]>([])
+  const [matchedProfessions, setMatchedProfessions] = useState<number[]>(
+    () => lsGet<number[]>(LS_MATCHED, [])
+  )
 
   const maxQuestions = isPremium ? MAX_QUESTIONS_PREMIUM : MAX_QUESTIONS_FREE
 
+  /** Try to resume an existing in-progress session from the DB */
+  const resumeSession = useCallback(async (userId: string): Promise<boolean> => {
+    // Check localStorage first
+    const storedSessionId = localStorage.getItem(LS_SESSION_ID)
+    const storedAnswers = lsGet<QuestionAnswer[]>(LS_ANSWERS, [])
+    const storedMatched = lsGet<number[]>(LS_MATCHED, [])
+
+    // If we have matched professions already, the questionnaire is done
+    if (storedSessionId && storedMatched.length > 0) {
+      setSessionId(storedSessionId)
+      setAnswers(storedAnswers)
+      setMatchedProfessions(storedMatched)
+      setCompleted(true)
+      return true
+    }
+
+    // Try loading from DB — find last in-progress session
+    const { data } = await supabase
+      .from('questionnaire_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (!data) return false
+
+    const dbAnswers = (data.answers || []) as QuestionAnswer[]
+    const dbMatched = (data.matched_professions || []) as number[]
+
+    if (data.status === 'completed' && dbMatched.length > 0) {
+      // Session completed — restore results
+      setSessionId(data.id)
+      setAnswers(dbAnswers)
+      setMatchedProfessions(dbMatched)
+      setCompleted(true)
+      persist(LS_SESSION_ID, data.id)
+      persist(LS_ANSWERS, dbAnswers)
+      persist(LS_MATCHED, dbMatched)
+      localStorage.setItem(LS_SESSION_ID, data.id)
+      return true
+    }
+
+    if (data.status === 'in_progress' && dbAnswers.length > 0) {
+      // Session in progress — resume
+      setSessionId(data.id)
+      setAnswers(dbAnswers)
+      persist(LS_SESSION_ID, data.id)
+      persist(LS_ANSWERS, dbAnswers)
+      localStorage.setItem(LS_SESSION_ID, data.id)
+
+      // Check if we have enough answers to analyze
+      if (dbAnswers.length >= maxQuestions) {
+        await analyzeResults(dbAnswers, data.id)
+        return true
+      }
+
+      // Fetch next question from where we left off
+      await fetchNextQuestion(dbAnswers)
+      return true
+    }
+
+    return false
+  }, [maxQuestions])
+
   const startSession = useCallback(async (userId: string) => {
+    // First try to resume existing session
+    const resumed = await resumeSession(userId)
+    if (resumed) return
+
+    // No existing session — create new
     const { data, error } = await supabase
       .from('questionnaire_sessions')
       .insert({ user_id: userId })
@@ -25,14 +129,17 @@ export function useQuestionnaire(isPremium: boolean) {
 
     if (error || !data) return
     setSessionId(data.id)
+    localStorage.setItem(LS_SESSION_ID, data.id)
+    persist(LS_SESSION_ID, data.id)
     await fetchNextQuestion([])
-  }, [])
+  }, [resumeSession])
 
   const fetchNextQuestion = async (prevAnswers: QuestionAnswer[]) => {
     setLoading(true)
     try {
+      const sid = localStorage.getItem(LS_SESSION_ID)
       const { data, error } = await supabase.functions.invoke('generate-question', {
-        body: { session_id: sessionId, previous_answers: prevAnswers },
+        body: { session_id: sid, previous_answers: prevAnswers },
       })
       if (error) throw error
       setCurrentQuestion(data as AIQuestion)
@@ -84,44 +191,53 @@ export function useQuestionnaire(isPremium: boolean) {
 
     const updatedAnswers = [...answers, newAnswer]
     setAnswers(updatedAnswers)
+    persist(LS_ANSWERS, updatedAnswers)
 
     // Save to DB
-    if (sessionId) {
+    const sid = sessionId || localStorage.getItem(LS_SESSION_ID)
+    if (sid) {
       await supabase.from('questionnaire_sessions').update({
         answers: updatedAnswers as unknown as Record<string, unknown>[],
         current_question_index: updatedAnswers.length,
-      }).eq('id', sessionId)
+      }).eq('id', sid)
     }
 
     // Check if done
     if (updatedAnswers.length >= maxQuestions) {
-      await analyzeResults(updatedAnswers)
+      await analyzeResults(updatedAnswers, sid)
       return
     }
 
     await fetchNextQuestion(updatedAnswers)
   }
 
-  const analyzeResults = async (allAnswers: QuestionAnswer[]) => {
+  const analyzeResults = async (allAnswers: QuestionAnswer[], sid?: string | null) => {
     setAnalyzing(true)
+    const effectiveSessionId = sid || sessionId || localStorage.getItem(LS_SESSION_ID)
+    let matched: number[] = []
+
     try {
       const { data, error } = await supabase.functions.invoke('analyze-and-match', {
-        body: { session_id: sessionId, answers: allAnswers },
+        body: { session_id: effectiveSessionId, answers: allAnswers },
       })
       if (error) throw error
-      setMatchedProfessions(data.matched_profession_ids || [])
+      matched = data.matched_profession_ids || []
     } catch {
       // Fallback: random selection of 25 professions for demo
       const randomIds = Array.from({ length: 25 }, () => Math.floor(Math.random() * 208) + 1)
-      setMatchedProfessions([...new Set(randomIds)].slice(0, 25))
+      matched = [...new Set(randomIds)].slice(0, 25)
     }
 
-    if (sessionId) {
+    setMatchedProfessions(matched)
+    persist(LS_MATCHED, matched)
+    localStorage.setItem(LS_STEP, 'filtering')
+
+    if (effectiveSessionId) {
       await supabase.from('questionnaire_sessions').update({
         status: 'completed',
         completed_at: new Date().toISOString(),
-        matched_professions: matchedProfessions,
-      }).eq('id', sessionId)
+        matched_professions: matched,
+      }).eq('id', effectiveSessionId)
     }
 
     setAnalyzing(false)
@@ -132,7 +248,27 @@ export function useQuestionnaire(isPremium: boolean) {
     if (answers.length === 0) return
     const prev = answers.slice(0, -1)
     setAnswers(prev)
+    persist(LS_ANSWERS, prev)
     fetchNextQuestion(prev)
+  }
+
+  /** Reset all local state and storage — for starting a completely new session */
+  const resetSession = () => {
+    localStorage.removeItem(LS_SESSION_ID)
+    localStorage.removeItem(LS_ANSWERS)
+    localStorage.removeItem(LS_MATCHED)
+    localStorage.removeItem(LS_FINAL)
+    localStorage.removeItem(LS_ROUND2)
+    localStorage.removeItem(LS_STEP)
+    sessionStorage.removeItem('sessionId')
+    sessionStorage.removeItem('matchedProfessions')
+    sessionStorage.removeItem('finalProfessions')
+    sessionStorage.removeItem('round2Professions')
+    setSessionId(null)
+    setAnswers([])
+    setCurrentQuestion(null)
+    setMatchedProfessions([])
+    setCompleted(false)
   }
 
   return {
@@ -145,7 +281,23 @@ export function useQuestionnaire(isPremium: boolean) {
     matchedProfessions,
     maxQuestions,
     startSession,
+    resumeSession,
     submitAnswer,
     goBack,
+    resetSession,
+  }
+}
+
+/** Helper: get current flow step from localStorage */
+export function getCurrentStep(): FlowStep {
+  return (localStorage.getItem(LS_STEP) as FlowStep) || null
+}
+
+/** Helper: set current flow step */
+export function setCurrentStep(step: FlowStep) {
+  if (step) {
+    localStorage.setItem(LS_STEP, step)
+  } else {
+    localStorage.removeItem(LS_STEP)
   }
 }

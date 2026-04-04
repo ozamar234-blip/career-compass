@@ -41,7 +41,7 @@ export function Premium() {
         .from('payments')
         .insert({
           user_id: user.id,
-          session_id: sessionStorage.getItem('sessionId') || undefined,
+          session_id: localStorage.getItem('cc_sessionId') || sessionStorage.getItem('sessionId') || undefined,
           plan: 'premium',
           amount: 49,
           status: 'pending',

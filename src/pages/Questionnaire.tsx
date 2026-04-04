@@ -6,7 +6,7 @@ import { Button } from '../components/ui/Button'
 import { ProgressBar } from '../components/ui/ProgressBar'
 import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { useAuth } from '../contexts/AuthContext'
-import { useQuestionnaire } from '../hooks/useQuestionnaire'
+import { useQuestionnaire, setCurrentStep } from '../hooks/useQuestionnaire'
 import { usePremium } from '../hooks/usePremium'
 
 export function Questionnaire() {
@@ -18,15 +18,20 @@ export function Questionnaire() {
     matchedProfessions, maxQuestions, startSession, submitAnswer, goBack,
   } = useQuestionnaire(isPremium)
   const [inputValue, setInputValue] = useState('')
+  const [resuming, setResuming] = useState(true)
 
   useEffect(() => {
-    if (user) startSession(user.id)
+    if (user) {
+      setCurrentStep('questionnaire')
+      setResuming(true)
+      startSession(user.id).then(() => setResuming(false))
+    }
   }, [user, startSession])
 
   useEffect(() => {
     if (completed && matchedProfessions.length > 0) {
-      // Store matched professions in sessionStorage for filtering page
-      sessionStorage.setItem('matchedProfessions', JSON.stringify(matchedProfessions))
+      // matchedProfessions are already persisted in useQuestionnaire hook
+      setCurrentStep('filtering')
       navigate('/filtering')
     }
   }, [completed, matchedProfessions, navigate])
@@ -50,14 +55,29 @@ export function Questionnaire() {
     )
   }
 
-  if (!currentQuestion && loading) {
-    return <LoadingSpinner text="מכין את השאלון..." />
+  if (resuming || (!currentQuestion && loading)) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <LoadingSpinner text={answers.length > 0 ? `ממשיך מאיפה שעצרת (שאלה ${answers.length + 1})...` : 'מכין את השאלון...'} />
+      </div>
+    )
   }
 
   return (
     <div className="min-h-[80vh] flex flex-col px-6 py-6">
       {/* Progress */}
       <ProgressBar current={answers.length} total={maxQuestions} label="התקדמות השאלון" />
+
+      {/* Resume indicator */}
+      {answers.length > 0 && answers.length < maxQuestions && (
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-center text-primary/70 text-xs mb-2"
+        >
+          ממשיך מאיפה שעצרת
+        </motion.p>
+      )}
 
       {/* Question */}
       <div className="flex-1 flex flex-col justify-center py-8">

@@ -28,7 +28,7 @@ export function Mirror() {
 
   // Subscribe to realtime updates
   useEffect(() => {
-    const sessionId = sessionStorage.getItem('sessionId')
+    const sessionId = localStorage.getItem('cc_sessionId') || sessionStorage.getItem('sessionId')
     if (!sessionId) return
 
     const channel = supabase
@@ -54,7 +54,7 @@ export function Mirror() {
     const friend = friends[idx]
     if (!friend.name || !user) return
 
-    const sessionId = sessionStorage.getItem('sessionId') || ''
+    const sessionId = localStorage.getItem('cc_sessionId') || sessionStorage.getItem('sessionId') || ''
 
     // Save invitation to DB
     const { data } = await supabase
