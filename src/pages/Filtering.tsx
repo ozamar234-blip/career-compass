@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ProgressBar } from '../components/ui/ProgressBar'
 import { ProfessionCard } from '../components/ProfessionCard'
 import { Confetti } from '../components/ui/Confetti'
-import { professions, type Profession, getProfessionsByIds } from '../data/professions'
+import { type Profession, getProfessionsByIds } from '../data/professions'
 import { useAuth } from '../contexts/AuthContext'
 import { usePremium } from '../hooks/usePremium'
 import { supabase } from '../lib/supabase'
@@ -42,16 +42,15 @@ export function Filtering() {
 
   // Load matched professions from questionnaire (try localStorage first, then sessionStorage)
   useEffect(() => {
-    setCurrentStep('filtering')
     const stored = localStorage.getItem('cc_matchedProfessions') || sessionStorage.getItem('matchedProfessions')
-    if (stored) {
-      const ids = JSON.parse(stored) as number[]
-      setRoundProfessions(getProfessionsByIds(ids))
-    } else {
-      // Demo fallback: pick random 25
-      const shuffled = [...professions].sort(() => Math.random() - 0.5)
-      setRoundProfessions(shuffled.slice(0, 25))
+    if (!stored) {
+      // No professions — questionnaire not completed, redirect back
+      navigate('/questionnaire')
+      return
     }
+    setCurrentStep('filtering')
+    const ids = JSON.parse(stored) as number[]
+    setRoundProfessions(getProfessionsByIds(ids))
   }, [])
 
   const currentProfession = roundProfessions[currentIdx]
@@ -62,6 +61,7 @@ export function Filtering() {
     if (!currentProfession) return
     const id = currentProfession.id
 
+    // Update state for UI
     switch (action) {
       case 'selected': setSelected(p => [...p, id]); break
       case 'rejected': setRejected(p => [...p, id]); break
@@ -70,15 +70,22 @@ export function Filtering() {
     }
 
     if (isLastCard) {
-      finishRound()
+      // Pass the last card's action explicitly — React state hasn't updated yet
+      finishRound(id, action)
     } else {
       setCurrentIdx(p => p + 1)
     }
   }, [currentProfession, isLastCard])
 
-  const finishRound = async () => {
+  const finishRound = async (lastId?: number, lastAction?: Action) => {
     setShowConfetti(true)
     setTimeout(() => setShowConfetti(false), 3000)
+
+    // Include the last card's action — React state hasn't updated yet
+    const allSelected = lastAction === 'selected' && lastId ? [...selected, lastId] : selected
+    const allRejected = lastAction === 'rejected' && lastId ? [...rejected, lastId] : rejected
+    const allMaybe = lastAction === 'maybe' && lastId ? [...maybe, lastId] : maybe
+    const allUnknown = lastAction === 'unknown' && lastId ? [...unknown, lastId] : unknown
 
     // Save round to DB
     if (user && sessionId) {
@@ -87,18 +94,18 @@ export function Filtering() {
         user_id: user.id,
         round_number: round + 1,
         input_professions: roundProfessions.map(p => p.id),
-        selected_professions: selected,
-        rejected_professions: rejected,
-        maybe_professions: maybe,
-        unknown_professions: unknown,
+        selected_professions: allSelected,
+        rejected_professions: allRejected,
+        maybe_professions: allMaybe,
+        unknown_professions: allUnknown,
       })
     }
 
     // Determine next round — ensure minimum professions
-    const nextProfessions = [...selected, ...maybe]
+    const nextProfessions = [...allSelected, ...allMaybe]
 
     // Fill from unknown/rejected if too few
-    const fillFrom = [...unknown, ...rejected]
+    const fillFrom = [...allUnknown, ...allRejected]
     while (nextProfessions.length < 3 && fillFrom.length > 0) {
       nextProfessions.push(fillFrom.shift()!)
     }
@@ -117,7 +124,7 @@ export function Filtering() {
       // Round 1 done — check premium for round 2+
       if (!isPremium) {
         // Free users: save top 5 and go to results
-        const freeResults = selected.length > 0 ? selected.slice(0, 5) : nextProfessions.slice(0, 5)
+        const freeResults = allSelected.length > 0 ? allSelected.slice(0, 5) : nextProfessions.slice(0, 5)
         localStorage.setItem('cc_finalProfessions', JSON.stringify(freeResults))
         sessionStorage.setItem('finalProfessions', JSON.stringify(freeResults))
         navigate('/premium')
@@ -128,9 +135,9 @@ export function Filtering() {
       advanceRound(2)
     } else {
       // Round 3 complete
-      const finalProfessions = selected.length >= 3
-        ? selected.slice(0, 3)
-        : [...selected, ...maybe].slice(0, 3)
+      const finalProfessions = allSelected.length >= 3
+        ? allSelected.slice(0, 3)
+        : [...allSelected, ...allMaybe].slice(0, 3)
 
       localStorage.setItem('cc_finalProfessions', JSON.stringify(finalProfessions))
       localStorage.setItem('cc_round2Professions', JSON.stringify(roundProfessions.map(p => p.id)))
@@ -182,7 +189,7 @@ export function Filtering() {
                 profession={currentProfession}
                 variant={roundConfig.variant}
                 onAction={handleAction}
-                matchPercentage={Math.floor(60 + Math.random() * 35)}
+                matchPercentage={60 + (currentProfession.id * 7 + round * 13) % 35}
               />
             </motion.div>
           )}

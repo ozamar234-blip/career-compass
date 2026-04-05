@@ -230,9 +230,14 @@ export function useQuestionnaire(isPremium: boolean) {
     let matched: number[] = []
 
     try {
-      const { data, error } = await supabase.functions.invoke('analyze-and-match', {
+      // 30-second timeout — analysis with Sonnet 4 takes ~10-15s
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 30000)
+      )
+      const fetchPromise = supabase.functions.invoke('analyze-and-match', {
         body: { session_id: effectiveSessionId, answers: allAnswers },
       })
+      const { data, error } = await Promise.race([fetchPromise, timeoutPromise])
       if (error) throw error
       matched = data.matched_profession_ids || []
     } catch {
