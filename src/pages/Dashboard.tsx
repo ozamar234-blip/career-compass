@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Brain, Filter, Users, FileText, Play, Crown, ChevronLeft, RotateCcw, CheckCircle2 } from 'lucide-react'
+import { Brain, Filter, Users, FileText, Play, ChevronLeft, RotateCcw, CheckCircle2 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { useAuth } from '../contexts/AuthContext'
@@ -154,11 +154,7 @@ export function Dashboard() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <h3 className="font-heebo font-bold text-sm">{step.title}</h3>
-                      {step.premium && (
-                        <span className="flex items-center gap-0.5 text-xs bg-accent/20 text-accent-dark px-2 py-0.5 rounded-full">
-                          <Crown className="w-3 h-3" /> פרימיום
-                        </span>
-                      )}
+                      {/* Premium badge removed — all features are free */}
                       {status === 'in_progress' && (
                         <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full font-bold">
                           בתהליך
