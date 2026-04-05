@@ -172,9 +172,9 @@ export function useQuestionnaire(isPremium: boolean) {
     try {
       const sid = localStorage.getItem(LS_SESSION_ID)
 
-      // Race the edge function against a 5-second timeout
+      // Race the edge function against a 10-second timeout
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), 5000)
+        setTimeout(() => reject(new Error('timeout')), 10000)
       )
 
       const fetchPromise = supabase.functions.invoke('generate-question', {

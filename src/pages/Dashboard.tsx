@@ -10,8 +10,8 @@ import { getCurrentStep, type FlowStep } from '../hooks/useQuestionnaire'
 const steps = [
   { key: 'questionnaire', icon: Brain, title: 'שאלון AI', desc: 'ענה על שאלות חווייתיות', route: '/questionnaire', color: 'text-blue-500' },
   { key: 'filtering', icon: Filter, title: 'סינון מקצועות', desc: 'צמצם ל-3 מקצועות', route: '/filtering', color: 'text-purple-500' },
-  { key: 'mirror', icon: Users, title: 'ראיית מראה', desc: 'הזמן 4 מכרים', route: '/mirror', color: 'text-accent-dark', premium: true },
-  { key: 'results', icon: FileText, title: 'דוח סינתזה', desc: 'צפה בתוצאות המלאות', route: '/results', color: 'text-success', premium: true },
+  { key: 'mirror', icon: Users, title: 'ראיית מראה', desc: 'הזמן 4 מכרים', route: '/mirror', color: 'text-accent-dark' },
+  { key: 'results', icon: FileText, title: 'דוח סינתזה', desc: 'צפה בתוצאות המלאות', route: '/results', color: 'text-success' },
 ]
 
 const stepOrder: FlowStep[] = ['questionnaire', 'filtering', 'mirror', 'results']
@@ -184,7 +184,8 @@ export function Dashboard() {
           })}
         </div>
 
-        {/* Premium CTA */}
+        {/* Premium CTA — hidden while payment is disabled */}
+        {/* TODO: Re-enable when payment flow is ready
         <Card className="bg-gradient-to-l from-accent/10 to-accent-dark/10 !border-accent/30">
           <div className="flex items-center gap-3 mb-3">
             <Crown className="w-6 h-6 text-accent-dark" />
@@ -197,6 +198,7 @@ export function Dashboard() {
             שדרג עכשיו — 49 ש"ח
           </Button>
         </Card>
+        */}
       </motion.div>
     </div>
   )

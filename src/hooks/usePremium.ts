@@ -1,30 +1,10 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
-import { useAuth } from '../contexts/AuthContext'
+import { useState } from 'react'
 
 export function usePremium() {
-  const { user } = useAuth()
-  const [isPremium, setIsPremium] = useState(false)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    if (!user) { setLoading(false); return }
-
-    const check = async () => {
-      const { data } = await supabase
-        .from('payments')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('plan', 'premium')
-        .eq('status', 'completed')
-        .limit(1)
-        .single()
-
-      setIsPremium(!!data)
-      setLoading(false)
-    }
-    check()
-  }, [user])
+  // TODO: Re-enable payment check when payment flow is ready
+  // For now, all users get premium access
+  const [isPremium] = useState(true)
+  const [loading] = useState(false)
 
   return { isPremium, loading }
 }
