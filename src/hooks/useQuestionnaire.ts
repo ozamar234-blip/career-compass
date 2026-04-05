@@ -172,9 +172,9 @@ export function useQuestionnaire(isPremium: boolean) {
     try {
       const sid = localStorage.getItem(LS_SESSION_ID)
 
-      // Race the edge function against a 10-second timeout
+      // Race the edge function against a 15-second timeout (Sonnet 4 needs ~6-8s)
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), 10000)
+        setTimeout(() => reject(new Error('timeout')), 15000)
       )
 
       const fetchPromise = supabase.functions.invoke('generate-question', {
